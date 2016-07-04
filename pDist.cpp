@@ -149,10 +149,10 @@ protected:
     }
 
     template <typename U>
-    friend class recDefD2D;
+    friend struct recDefD2D;
     
     template <typename U>
-    friend class recDefTD;
+    friend struct recDefTD;
 
     template <typename Callable, typename U, typename... Args>
     friend auto distToDists(Callable tr, ProbabilityDist<U> p, Args... args) -> typename std::result_of<Callable(U, typename extractT<Args>::type...)>::type; 
@@ -329,7 +329,7 @@ auto distToDists(Callable tr, ProbabilityDist<T> p, Args... args) -> typename st
         }
     }
     std::map<target,double> dist;
-    for(int i=0; i < runThreads.size(); i++){
+    for(unsigned int i=0; i < runThreads.size(); i++){
             runThreads[i]->join();
             for(auto& e : dists[i]) dist[e.first] = getWithDef(dist, e.first, (double)0) + e.second;
     }
@@ -380,7 +380,7 @@ auto transformDists(Callable tr, ProbabilityDist<T> p, Args... args) -> Probabil
         }
     }
     std::map<target,double> dist;
-    for(int i=0; i < runThreads.size(); i++){
+    for(unsigned int i=0; i < runThreads.size(); i++){
             runThreads[i]->join();
             for(auto& e : dists[i]) dist[e.first] = getWithDef(dist, e.first, (double)0) + e.second;
     }
@@ -556,19 +556,22 @@ int hitPaladin2(int a, int b){
     return r;
 }
 
-int main(int argc, char* argv[]){
-    ProbabilityDist<int> d6 = sumProb(1,6);
-    ProbabilityDist<int> d = transformDists(hitReg, d6, d6, d6);
-    ProbabilityDist<int> p = transformDists(hitPaladin, d6, d6, d6);
-    ProbabilityDist<int> d2 = transformDists(hitReg2, d6, d6);
-    ProbabilityDist<int> p2 = transformDists(hitPaladin2, d6, d6);
-    std::cout << d << ' ' << averageDist(d) << '\t' << d2 << ' ' << averageDist(d2) << std::endl << p << ' ' << averageDist(p) << '\t' << p2 << ' ' << averageDist(p2) << std::endl;
-    
-    //plotDist(d);
-    plotDist(d2);
-    //plotDist(p);
-    plotDist(p2);
-    plt::show();
+//int main(int argc, char* argv[]){
+int main(){
+    ProbabilityDist<int> d = transformDists([](int x, int y) 
+            -> bool { return x - y > - 3; }, //enemy level - defenders level
+            sumProb(2,6),//Defenders roll
+            sumProb(1,6));//Enemy roll
+    std::cout << d << std::endl;
+
+    /* ProbabilityDist<int> d = transformDists([](int x) -> int{ return x + 13; }, sumProb(4,6)); */
+
+    /* std::cout << d << std::endl; */
+
+    /* plotDist(d); */
+
+    /* plt::show(); */
+
     //ProbabilityDist<float> d6f(d6);
     //ProbabilityDist<double> d6d(d6);
     /* ProbabilityDist<int> d20 = sumProb(1,20); */
