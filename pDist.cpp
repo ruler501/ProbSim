@@ -310,6 +310,7 @@ auto distToDists(Callable tr, ProbabilityDist<T> p, Args... args) -> typename st
     using target = typename extractT<typename std::result_of<Callable(T, typename extractT<Args>::type...)>::type>::type;
     using ftype = std::function<ProbabilityDist<target>(T, typename extractT<Args>::type...)>;
     int threads = std::thread::hardware_concurrency();
+    threads = 1;
     std::vector<std::thread*>runThreads;
     std::vector<std::map<target, double>> dists(threads);
     std::vector<std::map<T, double>> sDists(threads);
@@ -361,6 +362,7 @@ auto transformDists(Callable tr, ProbabilityDist<T> p, Args... args) -> Probabil
     using target = typename std::result_of<Callable(T, typename extractT<Args>::type...)>::type;
     using ftype = std::function<target(T, typename extractT<Args>::type...)>;
     int threads = std::thread::hardware_concurrency();
+    threads = 1;
     std::vector<std::thread*>runThreads;
     std::vector<std::map<target, double>> dists(threads);
     std::vector<std::map<T, double>> sDists(threads);
@@ -556,13 +558,138 @@ int hitPaladin2(int a, int b){
     return r;
 }
 
+typedef std::vector<std::vector<int>> Board;
+
+int evaluateState(Board state){
+    for(int i=0; i < 3; i++){
+        if (state[i][0] == state[i][1] && state[i][1] == state[i][2] && state[i][0])
+            return state[i][0];
+        if (state[0][i] == state[1][i] && state[1][i] == state[2][i] && state[0][i]) 
+            return state[0][i];
+    }
+    if (((state[0][0] == state[1][1] && state[1][1] == state[2][2]) 
+         || (state[2][0] == state[1][1] && state[1][1] == state[0][2]))
+         && state[1][1])
+        return state[1][1];
+    for(int i=0; i < 3; i++)
+        for(int j=0; j < 3; j++)
+            if (state[i][j] == 0)
+                return 0;
+    return 3;
+}
+
+std::vector<Board> possibleMoves(int side, Board state){
+    std::vector<Board> result;
+    for(int i=0; i < 3; i++){
+        for(int j=0; j < 3; j++){
+            if(state[i][j] == 0){
+                Board tState = state;
+                tState[i][j] = side;
+                result.push_back(tState);
+            }
+        }
+    }
+    return result;
+}
+
+std::map<std::pair<Board, int>, int> cache;
+int stateRating(int side, Board state, bool ss=false){
+    std::pair<Board, int> cacheVal = std::make_pair(state, side);
+    if(cache.find(cacheVal) != cache.end())
+        return cache[cacheVal];
+    int winner = evaluateState(state);
+    if(winner != 0){
+        int value = 0;
+        if(winner == side) value = 1;
+        else if(winner != 3) value = -1;
+        if(!ss) value *= -1;
+        cache[cacheVal] = value;
+        return value;
+    }
+    std::vector<Board> choices = possibleMoves(ss ? side : 3 - side, state);
+    int bestValue = -100000;
+    for(Board& move : choices)
+        bestValue = std::max(bestValue, -stateRating(side, move, !ss));
+    cache[cacheVal] = bestValue;
+    return bestValue;
+}
+
+ProbabilityDist<Board> stepBoardRandom(Board state){
+    if(evaluateState(state) != 0)
+        return ProbabilityDist<Board>(state);
+    std::vector<Board> choices = possibleMoves(2, state);
+    std::map<Board, double> d;
+    for(Board& move : choices)
+        d[move] = 1.f/choices.size();
+    return ProbabilityDist<Board>(d);
+}
+
+ProbabilityDist<Board> stepBoardRandomF(Board state){
+    if(evaluateState(state) != 0)
+        return ProbabilityDist<Board>(state);
+    std::vector<Board> choices = possibleMoves(1, state);
+    std::map<Board, double> d;
+    for(Board& move : choices)
+        d[move] = 1.f/choices.size();
+    return ProbabilityDist<Board>(d);
+}
+
+Board stepBoardPerfectF(Board state){
+    if(evaluateState(state) != 0)
+        return state;
+    std::vector<Board> choices = possibleMoves(1, state);
+    int bestValue = -100000;
+    Board choice;
+    for(Board& move : choices){
+        int rating = -stateRating(1, move);
+        if(rating > bestValue){
+            choice = move;
+            bestValue = rating;
+        }
+    }
+    return choice;
+}
+
+Board stepBoardPerfect(Board state){
+    if(evaluateState(state) != 0)
+        return state;
+    std::vector<Board> choices = possibleMoves(2, state);
+    int bestValue = -100000;
+    Board choice;
+    for(Board& move : choices){
+        int rating = -stateRating(2, move);
+        if(rating > bestValue){
+            choice = move;
+            bestValue = rating;
+        }
+    }
+    return choice;
+}
+
 //int main(int argc, char* argv[]){
 int main(){
-    ProbabilityDist<int> d = transformDists([](int x, int y) 
-            -> bool { return x - y > - 3; }, //enemy level - defenders level
-            sumProb(2,6),//Defenders roll
-            sumProb(1,6));//Enemy roll
-    std::cout << d << std::endl;
+   /* ProbabilityDist<int> d = transformDists([](int x, int y) */ 
+   /*          -> bool { return x - y > - 3; }, //enemy level - defenders level */
+   /*          sumProb(2,6),//Defenders roll */
+   /*          sumProb(1,6));//Enemy roll */
+   /*  std::cout << d << std::endl; */
+
+    ProbabilityDist<Board> state(Board(3, std::vector<int>(3,0)));
+    ProbabilityDist<int> result = transformDists([](Board move) -> int{ return evaluateState(move); }, state);
+    while(result.valueAt(0) > 0.0000005){
+        /* state = distToDists(stepBoardRandomF, state); */
+        state = transformDists(stepBoardPerfectF, state);
+        state = distToDists(stepBoardRandom, state);
+        /* state = transformDists(stepBoardPerfect, state); */
+        result = transformDists([](Board move) -> int{ return evaluateState(move); }, state);
+    }
+    std::cout << result << std::endl;
+    std::cout << cache.size() << std::endl;
+
+
+    
+    
+    
 
     /* ProbabilityDist<int> d = transformDists([](int x) -> int{ return x + 13; }, sumProb(4,6)); */
 
