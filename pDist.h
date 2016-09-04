@@ -1,3 +1,6 @@
+#ifndef _PDIST_H_
+#define _PDIST_H_
+
 #include <algorithm>
 #include <cmath>
 #include <functional>
@@ -143,7 +146,7 @@ protected:
     void prune(){
         return;
         for(auto it=dist.begin(); it != dist.end();){
-            if (it->second <= 0) dist.erase(it++);
+            if (it->second <= 0) it = dist.erase(it);
             else it++;
         }
     }
@@ -259,30 +262,6 @@ ProbabilityDist<int> sumProb(int n, int s){
     return ProbabilityDist<int>(addDist(distX, distZ));
 }
 
-/*
-ProbabilityDist<int> sumProb(int n, int s){
-    if(n <= 0 || s <= 0) return ProbabilityDist<int>(0);
-    double iProb = 1.f/s;
-    std::map<int,double> distN;
-    for(int i=1; i <= s; i++) distN[i] = iProb;
-
-    for(int i=2; i <= n; i++){
-        std::map<int, double> tDist;
-        int mVal = s*i;
-        for(int j=i; j <= mVal; j++){
-            double tVal = 0;
-            int imVal = mVal - s;
-            for(int k=i-1; k <= imVal; k++)
-                if(1 <= j-k && j - k <= s)
-                    tVal += distN[k];
-            tDist[j] = tVal/s;
-        }
-        distN = tDist;
-    }
-    return ProbabilityDist<int>(distN);
-}
-*/
-
 template <typename T>
 struct recDefD2D{
     static void call(ProbabilityDist<T> res, std::map<T, double>& dist, std::vector<double>& pargs){
@@ -310,7 +289,9 @@ auto distToDists(Callable tr, ProbabilityDist<T> p, Args... args) -> typename st
     using target = typename extractT<typename std::result_of<Callable(T, typename extractT<Args>::type...)>::type>::type;
     using ftype = std::function<ProbabilityDist<target>(T, typename extractT<Args>::type...)>;
     int threads = std::thread::hardware_concurrency();
+#ifdef DISABLEMULTITHREAD
     threads = 1;
+#endif//DISABLEMULTITHREAD
     std::vector<std::thread*>runThreads;
     std::vector<std::map<target, double>> dists(threads);
     std::vector<std::map<T, double>> sDists(threads);
@@ -362,7 +343,9 @@ auto transformDists(Callable tr, ProbabilityDist<T> p, Args... args) -> Probabil
     using target = typename std::result_of<Callable(T, typename extractT<Args>::type...)>::type;
     using ftype = std::function<target(T, typename extractT<Args>::type...)>;
     int threads = std::thread::hardware_concurrency();
+#ifdef DISABLEMULTITHREAD
     threads = 1;
+#endif//DISABLEMULTITHREAD
     std::vector<std::thread*>runThreads;
     std::vector<std::map<target, double>> dists(threads);
     std::vector<std::map<T, double>> sDists(threads);
@@ -390,7 +373,8 @@ auto transformDists(Callable tr, ProbabilityDist<T> p, Args... args) -> Probabil
     return ProbabilityDist<target>(dist);
 }
 
-double averageDist(ProbabilityDist<int> d){
+template<typename Numeric>
+double averageDist(ProbabilityDist<Numeric> d){
     double t = 0;
     for(auto& e : d.getDist()){
         t += e.first*e.second;
@@ -398,346 +382,4 @@ double averageDist(ProbabilityDist<int> d){
     return t;
 }
 
-#define MAXN 2048
-#define MAXS 32
-std::map<int, double>* rCache[MAXN][MAXS];
-ProbabilityDist<int> rollAgain(int n, int s){
-    if(s < 2 || s > 1 + MAXS || n < 2 || n > MAXN + 1) return sumProb(n - 1, s); 
-    if(rCache[n-2][s-2] == nullptr){
-        for(int i=3; i <= n; i++){
-            if(rCache[n-i][s-2] != nullptr){
-                rCache[n-2][s-2] = new std::map<int,double>(addDist(sumProb(i-2, s).getDist(), *rCache[n-i][s-2]));
-                break;
-            }
-        }
-    }
-    return *rCache[n-2][s-2];
-}
-
-bool heroWon(std::pair<int,int> life){
-    return life.first > 0 && life.second <= 0;
-}
-
-bool battleDone(std::pair<int, int> life){
-    return life.first <= 0 || life .second <= 0;
-}
-
-std::pair<int,int> newLife(std::pair<int, int> life, int hd, int bd){
-    if (life.first > 0){
-        life.second = std::max(0, life.second - hd);
-    }
-    if(life.second > 0){
-        if(life.first > 0)
-            life.first = std::max(0, life.first - bd + 9);;
-    }
-    return life;
-}
-
-ProbabilityDist<int> benDamage(int d1, int d2){
-    if (d1 == 1) return ProbabilityDist<int>(0);
-    int n = 0, m = 0;
-    if (d1 >= 19){
-        n += 2;
-        m += 1;
-    }
-    else if (d1 >= 9){
-        n += 1;
-        m += 1;
-    }
-    if (d2 >= 19){
-        n += 2;
-        m += 1;
-    }
-    else if (d2 >= 9){
-        n += 1;
-        m += 1;
-    }
-    ProbabilityDist<int> d = sumProb(n, 8);
-    for(int i=0; i<m; i++) d = transformDists([](int x){ return x+4; }, d);
-    return d;
-}
-
-ProbabilityDist<int> josephDamage(int d1, int d2){
-    if (d1 == 1) return ProbabilityDist<int>(0);
-    int k = 0, n = 0, m = 0;
-    if (d1 == 20){
-        n += 2;
-        k += 6;
-        m += 1;
-    }
-    else if (d1 >= 9){
-        n += 1;
-        k += 3;
-        m += 1;
-    }
-    if (d2 >= 19){
-        n += 2;
-        k += 6;
-        m += 1;
-    }
-    else if (d2 >= 9){
-        n += 1;
-        k += 6;
-        m += 1;
-    }
-    ProbabilityDist<int> d = transformDists([](int x, int y){ return x+y; }, sumProb(n, 8), sumProb(k, 6));
-    for(int i=0; i<m; i++) d = transformDists([](int x){ return x+4; }, d);
-    return d;
-}
-
-ProbabilityDist<int> garrettDamage(int d1, int d2){
-    if (d1 == 1) return ProbabilityDist<int>(0);
-    int n = 0, m = 0;
-    if (d1 == 20){
-        n += 8;
-        m += 1;
-    }
-    else if (d1 >= 13){
-        n += 4;
-        m += 1;
-    }
-    if (d2 == 20){
-        n += 8;
-        m += 1;
-    }
-    else if (d2 >= 13){
-        n += 4;
-        m += 1;
-    }
-    ProbabilityDist<int> d = sumProb(n, 6);
-    for(int i=0; i<m; i++) d = transformDists([](int x){ return x+6; }, d);
-    return d;
-}
-
-ProbabilityDist<int> punchDamage(int d1, int d2){
-    if (d1 == 1) return ProbabilityDist<int>(0);
-    int n = 0;
-    if(d1 == 20) n += 8;
-    else if(d1 >= 9) n += 7;
-    if(d2 == 20) n += 8;
-    else if(d2 >= 9) n += 7;
-    return ProbabilityDist<int>(n);
-}
-
-std::pair<int, int> oneAttack(std::pair<int, int> life, int hd){
-    if (life.first > 0){
-        life.second = std::max(0, life.second - hd);
-    }
-    return life;
-}
-
-int hitReg(int a, int b, int c){
-    int r = 0;
-    if(a >= 5) r++;
-    if(b >= 5) r++;
-    if(c >= 5) r++;
-    return r;
-}
-
-int hitReg2(int a, int b){
-    int r = 0;
-    if(a >= 5) r++;
-    if(b >= 5) r++;
-    return r;
-}
-
-int hitPaladin(int a, int b, int c){
-    int r = 0;
-    if(a >= 5) r++;
-    if(b >= 5) r++;
-    if(c >= 5) r++;
-    if(a == b || b == c || c == a) return 3;
-    return r;
-}
-
-int hitPaladin2(int a, int b){
-    int r = 0;
-    if(a >= 5) r++;
-    if(b >= 5) r++;
-    if(a == b) return 2;
-    return r;
-}
-
-typedef std::vector<std::vector<int>> Board;
-
-int evaluateState(Board state){
-    for(int i=0; i < 3; i++){
-        if (state[i][0] == state[i][1] && state[i][1] == state[i][2] && state[i][0])
-            return state[i][0];
-        if (state[0][i] == state[1][i] && state[1][i] == state[2][i] && state[0][i]) 
-            return state[0][i];
-    }
-    if (((state[0][0] == state[1][1] && state[1][1] == state[2][2]) 
-         || (state[2][0] == state[1][1] && state[1][1] == state[0][2]))
-         && state[1][1])
-        return state[1][1];
-    for(int i=0; i < 3; i++)
-        for(int j=0; j < 3; j++)
-            if (state[i][j] == 0)
-                return 0;
-    return 3;
-}
-
-std::vector<Board> possibleMoves(int side, Board state){
-    std::vector<Board> result;
-    for(int i=0; i < 3; i++){
-        for(int j=0; j < 3; j++){
-            if(state[i][j] == 0){
-                Board tState = state;
-                tState[i][j] = side;
-                result.push_back(tState);
-            }
-        }
-    }
-    return result;
-}
-
-std::map<std::pair<Board, int>, int> cache;
-int stateRating(int side, Board state, bool ss=false){
-    std::pair<Board, int> cacheVal = std::make_pair(state, side);
-    if(cache.find(cacheVal) != cache.end())
-        return cache[cacheVal];
-    int winner = evaluateState(state);
-    if(winner != 0){
-        int value = 0;
-        if(winner == side) value = 1;
-        else if(winner != 3) value = -1;
-        if(!ss) value *= -1;
-        cache[cacheVal] = value;
-        return value;
-    }
-    std::vector<Board> choices = possibleMoves(ss ? side : 3 - side, state);
-    int bestValue = -100000;
-    for(Board& move : choices)
-        bestValue = std::max(bestValue, -stateRating(side, move, !ss));
-    cache[cacheVal] = bestValue;
-    return bestValue;
-}
-
-ProbabilityDist<Board> stepBoardRandom(Board state){
-    if(evaluateState(state) != 0)
-        return ProbabilityDist<Board>(state);
-    std::vector<Board> choices = possibleMoves(2, state);
-    std::map<Board, double> d;
-    for(Board& move : choices)
-        d[move] = 1.f/choices.size();
-    return ProbabilityDist<Board>(d);
-}
-
-ProbabilityDist<Board> stepBoardRandomF(Board state){
-    if(evaluateState(state) != 0)
-        return ProbabilityDist<Board>(state);
-    std::vector<Board> choices = possibleMoves(1, state);
-    std::map<Board, double> d;
-    for(Board& move : choices)
-        d[move] = 1.f/choices.size();
-    return ProbabilityDist<Board>(d);
-}
-
-Board stepBoardPerfectF(Board state){
-    if(evaluateState(state) != 0)
-        return state;
-    std::vector<Board> choices = possibleMoves(1, state);
-    int bestValue = -100000;
-    Board choice;
-    for(Board& move : choices){
-        int rating = -stateRating(1, move);
-        if(rating > bestValue){
-            choice = move;
-            bestValue = rating;
-        }
-    }
-    return choice;
-}
-
-Board stepBoardPerfect(Board state){
-    if(evaluateState(state) != 0)
-        return state;
-    std::vector<Board> choices = possibleMoves(2, state);
-    int bestValue = -100000;
-    Board choice;
-    for(Board& move : choices){
-        int rating = -stateRating(2, move);
-        if(rating > bestValue){
-            choice = move;
-            bestValue = rating;
-        }
-    }
-    return choice;
-}
-
-//int main(int argc, char* argv[]){
-int main(){
-   /* ProbabilityDist<int> d = transformDists([](int x, int y) */ 
-   /*          -> bool { return x - y > - 3; }, //enemy level - defenders level */
-   /*          sumProb(2,6),//Defenders roll */
-   /*          sumProb(1,6));//Enemy roll */
-   /*  std::cout << d << std::endl; */
-
-    ProbabilityDist<Board> state(Board(3, std::vector<int>(3,0)));
-    ProbabilityDist<int> result = transformDists([](Board move) -> int{ return evaluateState(move); }, state);
-    while(result.valueAt(0) > 0.0000005){
-        /* state = distToDists(stepBoardRandomF, state); */
-        state = transformDists(stepBoardPerfectF, state);
-        state = distToDists(stepBoardRandom, state);
-        /* state = transformDists(stepBoardPerfect, state); */
-        result = transformDists([](Board move) -> int{ return evaluateState(move); }, state);
-    }
-    std::cout << result << std::endl;
-    std::cout << cache.size() << std::endl;
-
-
-    
-    
-    
-
-    /* ProbabilityDist<int> d = transformDists([](int x) -> int{ return x + 13; }, sumProb(4,6)); */
-
-    /* std::cout << d << std::endl; */
-
-    /* plotDist(d); */
-
-    /* plt::show(); */
-
-    //ProbabilityDist<float> d6f(d6);
-    //ProbabilityDist<double> d6d(d6);
-    /* ProbabilityDist<int> d20 = sumProb(1,20); */
-    /* //std::cout << d6 << std::endl << d6f << std::endl << d6d << std::endl; */
-    //std::cout << ProbabilityDist<int>(transformDists(sumAny, d6, d6f, d6d)) << std::endl << std::endl;
-    /* std::cout << sumProb(0,6) << std::endl << std::endl; */
-    /* for(int i=0; i < MAXS; i++){ */
-    /*     rCache[0][i] = new std::map<int, double>(sumProb(1,i+2).getDist()); */
-    /*     for(int j=1; j < MAXN; j++){ */
-    /*         rCache[j][i] = nullptr; */
-    /*     } */
-    /* } */
-    /* ProbabilityDist<int> d = distToDists(rollAgain, sumProb(1,1000), ProbabilityDist<int>(20)); */ 
-    //plotDist(d);
-    //plt::show();
-    //    ProbabilityDist<int> hd = distToDists(bossHit, transformDists(max, sumProb(1,20), sumProb(1,20)));
-    //std::cout << sumProb(800,6) << std::endl;
-    /* ProbabilityDist<int> d20 = sumProb(1,20); */
-    /* ProbabilityDist<int> ad20 = transformDists(max, d20, d20); */
-    /* ProbabilityDist<int> hd0 = distToDists(benDamage, d20, d20); */
-    /* ProbabilityDist<int> hd = transformDists(div2, distToDists(benDamage, ad20, ad20)); */
-    /* hd = transformDists(addBoth, hd, transformDists(div2, distToDists(josephDamage, ad20, ad20))); */
-    /* ProbabilityDist<int> bd = distToDists(garrettDamage, ad20, ad20); */
-    /* ProbabilityDist<std::pair<int,int>> life(std::make_pair(59, 71)); */
-    /* life = transformDists(oneAttack, life, hd0); */
-    /* life = transformDists(newLife, life, hd0, bd); */
-    /* ProbabilityDist<int> won = transformDists(heroWon, life); */
-    /* ProbabilityDist<int> done = transformDists(battleDone, life); */
-    /* std::cout << won << '\t' << done << std::endl; */
-    /* while(done.valueAt(false) > 0.00005){ */
-    /*      life = transformDists(newLife, life, hd, bd); */
-    /*      won = transformDists(heroWon, life); */
-    /*      done = transformDists(battleDone, life); */
-    /*      std::cout << won << '\t' << done << std::endl; */
-   /* //      plotDist(transformDists(extractSecond, life)); */
-    /* } */
-   /* // plt::show(); */
-}
-
-
-//template <typename T, typename... Args>
-//void plotDists(ProbabilityDist<T>, Args... args);
+#endif
